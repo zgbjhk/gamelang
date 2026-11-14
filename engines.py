@@ -153,19 +153,20 @@ def _find_steam_settings(exe: Path) -> Path | None:
 
 
 def detect_unity(exe: Path) -> Target | None:
-    datas = [d for d in exe.parent.iterdir() if d.is_dir() and d.name.endswith("_Data")]
-    if not datas:
-        return None
-    data = datas[0]
-    if not (exe.parent / "UnityPlayer.dll").exists() and not (data / "globalgamemanagers").exists():
-        return None
-
     # 优先找 Steam 模拟器/客户端的语言配置, 不管 steam_api dll 在不在
     cfg = _find_steam_settings(exe)
     if cfg:
         cur = get_ini_value(cfg, "user::general", "language")
         return Target("Unity · Steam", "ini", cfg, "user::general", "language",
                       cur, fixable=True)
+
+    datas = [d for d in exe.parent.iterdir()
+             if d.is_dir() and d.name.lower().endswith("_data")]
+    if not datas:
+        return None
+    data = datas[0]
+    if not (exe.parent / "UnityPlayer.dll").exists() and not (data / "globalgamemanagers").exists():
+        return None
 
     company = product = ""
     appinfo = data / "app.info"
@@ -182,10 +183,18 @@ def detect_unity(exe: Path) -> Target | None:
 
 def detect_renpy(exe: Path) -> Target | None:
     root = exe.parent
-    tl = root / "game" / "tl"
-    if not (root / "renpy").exists() and not (root / "game").exists():
-        return None
+    gdir = root / "game"
 
+    if not (root / "renpy").exists():
+        if not gdir.is_dir():
+            return None
+        # 只有 game 目录还不够, 必须有 Ren'Py 的特征文件
+        marks = (list(gdir.glob("*.rpy")) + list(gdir.glob("*.rpyc"))
+                 + list(gdir.glob("*.rpa")) + list(gdir.glob("script.*")))
+        if not marks:
+            return None
+
+    tl = gdir / "tl"
     langs = []
     if tl.is_dir():
         langs = sorted(d.name for d in tl.iterdir() if d.is_dir())
